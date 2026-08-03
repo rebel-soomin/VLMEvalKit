@@ -109,6 +109,25 @@ _ARCH_TABLE: tuple[tuple[str, str, dict], ...] = (
             'use_inputs_embeds': True,
         },
     }),
+    # GOT-OCR2.0. Not in rbln-model-zoo — optimum-rbln has no GOT support
+    # at all, so the model classes come from the vendored
+    # ``got_ocr2_backend`` package and these defaults mirror the reference
+    # compile script it was ported from (image_size falls back to
+    # vision_config.image_size = 1024; ``vision_tower: {}`` is required so
+    # the submodule config is instantiated).
+    #
+    # ``language_model.use_inputs_embeds`` is deliberately absent: the
+    # vendored ``RBLNGotOcr2ForConditionalGenerationConfig`` forces it to
+    # True, because a False value silently drops embed_tokens from the
+    # artifact and breaks generate.
+    ('gotocr2', 'RBLNGotOcr2', {
+        'batch_size': 1,
+        'vision_tower': {},
+        'language_model': {
+            'batch_size': 1,
+            'max_seq_len': 4096,
+        },
+    }),
 )
 
 # Cosmos-Reason1 specific compile defaults — shares Qwen2.5-VL architecture
@@ -194,9 +213,9 @@ def auto_select_wrapper(model_path: str) -> tuple[type, dict]:
     """
     # Lazy import: avoid pulling every wrapper at module load time, and
     # avoid a circular import when this module is loaded from rbln/__init__.
-    from . import (RBLNBlip2, RBLNCosmosReason1, RBLNGemma3, RBLNIdefics3, RBLNLlava,
-                   RBLNLlavaNext, RBLNPaliGemma, RBLNPaliGemma2, RBLNPixtral, RBLNQwen2VL,
-                   RBLNQwen3VL)
+    from . import (RBLNBlip2, RBLNCosmosReason1, RBLNGemma3, RBLNGotOcr2, RBLNIdefics3,
+                   RBLNLlava, RBLNLlavaNext, RBLNPaliGemma, RBLNPaliGemma2, RBLNPixtral,
+                   RBLNQwen2VL, RBLNQwen3VL)
 
     name_to_cls: dict[str, type] = {
         'RBLNQwen2VL': RBLNQwen2VL,
@@ -210,6 +229,7 @@ def auto_select_wrapper(model_path: str) -> tuple[type, dict]:
         'RBLNPaliGemma': RBLNPaliGemma,
         'RBLNBlip2': RBLNBlip2,
         'RBLNCosmosReason1': RBLNCosmosReason1,
+        'RBLNGotOcr2': RBLNGotOcr2,
     }
 
     if 'cosmos' in model_path.lower():

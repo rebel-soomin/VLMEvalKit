@@ -206,6 +206,34 @@ python run.py \
   --data MMBench_DEV_EN MMMU_DEV_VAL MMStar MathVista_MINI AI2D_TEST OCRBench DocVQA_VAL ChartQA_TEST
 ```
 
+#### GOT-OCR2.0 (OCR-only model)
+
+`optimum-rbln` ships no GOT-OCR2.0 support, so the model classes are vendored in
+`vlmeval/vlm/rbln/got_ocr2_backend/` and register themselves into optimum-rbln's
+in-memory registries on first use. No extra install step; `--device rbln` picks up
+`GotOcr2ForConditionalGeneration` automatically.
+
+```bash
+python run.py --device rbln --model stepfun-ai/GOT-OCR-2.0-hf --data OCRBench_v2
+```
+
+GOT-OCR2.0 takes **no free-form question** — its processor synthesises one of a
+fixed set of queries. `RBLNGotOcr2` therefore uses the dataset question to *select*
+a query mode: `OCR with format:` when the question asks for markdown / HTML /
+LaTeX, `[box] OCR:` when it carries an explicit `[x1, y1, x2, y2]` region, and plain
+`OCR:` otherwise (the two axes compose). Pin the mode for a whole run with
+`--rbln-kwargs '{"ocr_mode": "format"}'` (`auto` | `plain` | `format`).
+
+On a mixed benchmark such as OCRBench_v2 this means the OCR-shaped categories are
+answered on the model's own terms, while the VQA / grounding / counting categories
+receive transcribed page text instead of an answer — a model capability limit, not
+a wrapper bug.
+
+Two constraints follow from the compiled artifact: the vision tower is compiled for
+exactly one 1024x1024 input (so `crop_to_patches` / multi-page inputs are not
+available), and `language_model.max_seq_len` defaults to 4096, which caps
+input + output tokens.
+
 #### Serving via `vllm-rbln`
 
 ```bash

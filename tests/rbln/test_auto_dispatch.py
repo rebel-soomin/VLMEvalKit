@@ -19,9 +19,9 @@ import json
 
 import pytest
 
-from vlmeval.vlm.rbln import (RBLNBlip2, RBLNCosmosReason1, RBLNGemma3, RBLNIdefics3, RBLNLlava,
-                              RBLNLlavaNext, RBLNPaliGemma, RBLNPaliGemma2, RBLNPixtral,
-                              RBLNQwen2VL, RBLNQwen3VL)
+from vlmeval.vlm.rbln import (RBLNBlip2, RBLNCosmosReason1, RBLNGemma3, RBLNGotOcr2,
+                              RBLNIdefics3, RBLNLlava, RBLNLlavaNext, RBLNPaliGemma,
+                              RBLNPaliGemma2, RBLNPixtral, RBLNQwen2VL, RBLNQwen3VL)
 from vlmeval.vlm.rbln.auto import auto_select_wrapper
 
 
@@ -49,6 +49,7 @@ _CASES = [
     ('paligemma2', ['PaliGemma2ForConditionalGeneration'], RBLNPaliGemma2),
     ('paligemma', ['PaliGemmaForConditionalGeneration'], RBLNPaliGemma),
     ('blip2', ['Blip2ForConditionalGeneration'], RBLNBlip2),
+    ('gotocr2', ['GotOcr2ForConditionalGeneration'], RBLNGotOcr2),
 ]
 
 
@@ -120,6 +121,24 @@ def test_qwen_seeds_pixel_kwargs(tmp_path):
     _, defaults = auto_select_wrapper(path)
     # _WRAPPER_KWARG_DEFAULTS seeds min/max pixels for Qwen families.
     assert 'min_pixels' in defaults and 'max_pixels' in defaults
+
+
+def test_gotocr2_forces_inputs_embeds_via_config_not_table(tmp_path):
+    """The GOT compile defaults deliberately omit
+    ``language_model.use_inputs_embeds``: the vendored
+    ``RBLNGotOcr2ForConditionalGenerationConfig`` forces it True, because a
+    False value silently drops embed_tokens from the artifact and breaks
+    generate. Guards against someone "helpfully" adding it here (where a
+    caller override could then turn it off).
+    """
+    path = _make_model_dir(tmp_path, 'GOT-OCR-2.0-hf', ['GotOcr2ForConditionalGeneration'])
+    cls, defaults = auto_select_wrapper(path)
+    assert cls is RBLNGotOcr2
+    lm = defaults['rbln_config']['language_model']
+    assert 'use_inputs_embeds' not in lm
+    assert lm['max_seq_len'] == 4096
+    # vision_tower must be present (empty) so its submodule config is built.
+    assert defaults['rbln_config']['vision_tower'] == {}
 
 
 def test_unknown_architecture_raises(tmp_path):

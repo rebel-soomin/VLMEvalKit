@@ -47,7 +47,7 @@ PY="${PYTHON:-python}"
 
 FAMILIES=(
   qwen2_vl qwen3_vl cosmos llava llava_next
-  idefics3 gemma3 pixtral paligemma paligemma2 blip2
+  idefics3 gemma3 pixtral paligemma paligemma2 blip2 got_ocr2
 )
 
 # family -> HF model id (basename becomes the cache dir)
@@ -63,6 +63,7 @@ declare -A MODEL=(
   [paligemma]="google/paligemma-3b-mix-448"
   [paligemma2]="google/paligemma2-3b-mix-224"
   [blip2]="Salesforce/blip2-opt-2.7b"
+  [got_ocr2]="stepfun-ai/GOT-OCR-2.0-hf"
 )
 
 # family -> representative dataset (small MCQ/VQA; cached or auto-download)
@@ -78,6 +79,7 @@ declare -A DATA=(
   [paligemma]="AI2D_TEST"
   [paligemma2]="AI2D_TEST"
   [blip2]="ChartQA_TEST"
+  [got_ocr2]="OCRBench_v2_MINI"
 )
 
 # family -> _ARCH_TABLE default tensor_parallel_size
@@ -85,6 +87,7 @@ declare -A DEF_TP=(
   [qwen2_vl]=8 [qwen3_vl]=8 [cosmos]=8
   [llava]=4 [llava_next]=4 [idefics3]=8 [gemma3]=4
   [pixtral]=8 [paligemma]=4 [paligemma2]=4 [blip2]=1
+  [got_ocr2]=1
 )
 
 # family -> printf template that injects a tp value into --rbln-kwargs JSON.
@@ -101,6 +104,9 @@ declare -A TMPL=(
   [paligemma]='{"rbln_config":{"language_model":{"tensor_parallel_size":%d}}}'
   [paligemma2]='{"rbln_config":{"language_model":{"tensor_parallel_size":%d}}}'
   [blip2]='{"rbln_config":{"language_model":{"tensor_parallel_size":%d}}}'
+  # GOT-OCR2.0 uses num_devices (tensor_parallel_size is the deprecated alias)
+  # and needs vision_tower present so its submodule config gets built.
+  [got_ocr2]='{"rbln_config":{"vision_tower":{},"language_model":{"num_devices":%d,"max_seq_len":4096}}}'
 )
 
 log()  { printf '[rbln-smoke] %s\n' "$*"; }

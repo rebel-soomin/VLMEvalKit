@@ -17,7 +17,7 @@
 T0/T0.5/T1 은 `/workspace/.eval` venv 의 `pytest tests/rbln/` 로 NPU 없이 통과한다.
 T2 는 `scripts/rbln_smoke.sh` 로 NPU 호스트에서 수행한다 (CI 필수 체크 아님, 아티팩트로 기록).
 
-## 패밀리 × 모달리티 (11개 concrete 패밀리)
+## 패밀리 × 모달리티 (12개 concrete 패밀리)
 
 `tensor_parallel_size` 는 **컴파일 시 결정**되는 값이며 고정 디바이스 카운트 게이트가
 아니다. 캐시 아티팩트가 있으면 그대로 로드하고, 없으면 아래 default tp(=`_ARCH_TABLE`)
@@ -36,6 +36,7 @@ T2 는 `scripts/rbln_smoke.sh` 로 NPU 호스트에서 수행한다 (CI 필수 �
 | RBLNPaliGemma    | single-image (`INTERLEAVE=False`) | paligemma-3b-mix-448 | AI2D_TEST | 4 | `language_model.tensor_parallel_size` | T0,T2 |
 | RBLNPaliGemma2   | single-image (`INTERLEAVE=False`) | paligemma2-3b-mix-224 | AI2D_TEST | 4 | `language_model.tensor_parallel_size` | T0,T2 |
 | RBLNBlip2³       | single-image VQA/caption | blip2-opt-2.7b | OCRBench / ChartQA_TEST | 1 | `language_model.tensor_parallel_size` | T0,T2 |
+| RBLNGotOcr2⁴     | single-image OCR (`INTERLEAVE=False`) | GOT-OCR-2.0-hf | OCRBench_v2 / OCRBench_v2_MINI | 1 | `language_model.num_devices` | T0,T2 |
 
 각주:
 - ¹ **알려진 quirk**: `Qwen3-VL-*-RBLN` 레지스트리 엔트리는 현재 `RBLNQwen2VL` 에
@@ -47,6 +48,13 @@ T2 는 `scripts/rbln_smoke.sh` 로 NPU 호스트에서 수행한다 (CI 필수 �
 - ³ BLIP-2: optimum-rbln 0.10.3 의 `generate` 출력은 프롬프트 토큰을 **포함**하므로 trim 을 켠다
   (`_DECODE_TRIM=True` 상속, `_DECODE_STRIP=True`). 또한 BLIP-2-OPT 는 `"Question: {q} Answer:"`
   컨벤션이라야 답을 생성하므로 `generate_inner` 가 프롬프트를 그 형식으로 감싼다 (실 NPU 검증됨).
+- ⁴ GOT-OCR2.0 은 **optimum-rbln 에 지원이 없어** 모델 클래스를 `vlmeval/vlm/rbln/got_ocr2_backend/`
+  에 벤더링했다 (import 시 optimum-rbln 인메모리 레지스트리에 등록; site-packages 미변경).
+  질문 텍스트를 받지 않는 OCR 전용 모델이라 프롬프트 패리티 대신 **쿼리 모드 라우팅**
+  (`OCR:` / `OCR with format:` / `[box] OCR:`)을 `test_got_ocr2_query.py` 가 실제 OCRBench_v2
+  질문 템플릿으로 잠근다. 또한 GOT 는 답을 `<|im_end|>` 로 끝내지만 generation_config 에
+  eos_token_id 가 없어, 래퍼가 이를 `eos_token_id` 에 넣지 않으면 매 예측 뒤에 쓰레기 토큰이
+  max_new_tokens 까지 붙는다 (실측: 45토큰 1.2s → 2048토큰 12.6s).
 
 ## 모달리티 커버리지 (스칼라 채점기)
 

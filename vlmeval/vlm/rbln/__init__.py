@@ -5,6 +5,7 @@ from .base import RBLNVLMBase
 from .blip2 import RBLNBlip2
 from .cosmos_reason1 import RBLNCosmosReason1
 from .gemma3 import RBLNGemma3
+from .got_ocr2 import RBLNGotOcr2
 from .idefics3 import RBLNIdefics3
 from .llava import RBLNLlava
 from .llava_next import RBLNLlavaNext
@@ -27,6 +28,7 @@ __all__ = [
     'RBLNPaliGemma2',
     'RBLNLlava',
     'RBLNCosmosReason1',
+    'RBLNGotOcr2',
     'auto_select_wrapper',
     'register_rbln_auto',
 ]
