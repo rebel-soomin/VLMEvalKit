@@ -206,6 +206,26 @@ python run.py \
   --data MMBench_DEV_EN MMMU_DEV_VAL MMStar MathVista_MINI AI2D_TEST OCRBench DocVQA_VAL ChartQA_TEST
 ```
 
+#### Using several NPUs for one benchmark
+
+`run.py`'s multi-rank path is **not available on an RBLN host**: it initialises
+`torch.distributed` with the `nccl` backend, which requires CUDA. Use
+`scripts/rbln_shard_infer.py` instead — it shards over `RANK`/`WORLD_SIZE` (which
+`vlmeval.inference.infer_data` already honours), pins one NPU per worker via
+`RBLN_DEVICES`, then merges the shards and scores once with the dataset's own
+`evaluate`. Same inference and scoring code as `run.py`; only the process
+coordination differs.
+
+```bash
+python scripts/rbln_shard_infer.py \
+  --model GOT-OCR-2.0-hf-rbln --data OCRBench_v2 \
+  --work-dir ./outputs/wd_full --nproc 8
+```
+
+For reference, GOT-OCR2.0 on the 10,000-sample OCRBench_v2 takes ~8 h on one NPU
+and ~1 h across eight. Run it from the directory holding the compiled artifact,
+as with `run.py`.
+
 #### GOT-OCR2.0 (OCR-only model)
 
 `optimum-rbln` ships no GOT-OCR2.0 support, so the model classes are vendored in
