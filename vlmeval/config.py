@@ -2652,6 +2652,24 @@ ppocr_series = {
     # the GPU twin of the RBLN port (vlmeval/vlm/rbln/ppocrv5_det.py); the
     # wrapper subclasses it, so routing and output formats are identical.
     'PP-OCRv5_server_det': partial(vlm.PPOCRv5Det, model_path='./PP-OCRv5_server_det-onnx'),
+    # Recognition needs line crops, so a detector must supply them. Detection
+    # is held FIXED via a frozen box cache (scripts/ppocr_boxes_precompute.py):
+    # it is a sharp cutoff, so running it live on each device changes how many
+    # crops exist and where, and the recognition comparison stops being
+    # attributable. ``charset_dir`` is the paddle checkpoint — the character
+    # dictionary is not part of the compiled artifact.
+    # ``orientation='confidence'`` is the measured-best setting on Korean scene
+    # photos: rotated pages make every line crop come out upside-down, worth
+    # +2.7 macro / +17.0 micro F1 on CC-OCR Korean. The class default stays
+    # 'none' (plain PaddleOCR det+rec); this preset opts in. See
+    # tests/rbln/PPOCRV5_REC_CCOCR_KOREAN_RESULTS.md.
+    'korean_PP-OCRv5_mobile_rec': partial(
+        vlm.PPOCRv5Rec,
+        model_path='./korean_PP-OCRv5_mobile_rec-onnx',
+        charset_dir='./korean_PP-OCRv5_mobile_rec',
+        boxes_cache='./ppocr_boxes/boxes.json',
+        orientation='confidence',
+    ),
 }
 
 model_groups.append(ppocr_series)

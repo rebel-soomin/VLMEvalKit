@@ -225,5 +225,18 @@ scripts/data
 PP-OCRv5_server_det/
 PP-OCRv5_server_det-onnx/
 
+# PP-OCRv5 rec checkpoints + compiled artifacts (scripts/ppocr_rec_compile.py).
+# The character dictionary lives in the checkpoint, so both are needed at run
+# time — but neither belongs in git.
+*PP-OCRv5_mobile_rec/
+*PP-OCRv5_mobile_rec-rbln/
+*PP-OCRv5_mobile_rec-onnx/
+*PP-OCRv5_server_rec/
+*PP-OCRv5_server_rec-rbln/
+*PP-OCRv5_server_rec-onnx/
+
+# Frozen detection box caches (scripts/ppocr_boxes_precompute.py)
+ppocr_boxes/
+
 # OCRBench_v2 spotting-metric scratch dir
 .vlmeval/

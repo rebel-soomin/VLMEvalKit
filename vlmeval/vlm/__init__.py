@@ -24,6 +24,7 @@ from .gemma import Gemma3, Gemma4, PaliGemma
 from .granite_docling import DOCLING
 from .granite_vision import GraniteVision3
 from .ppocr_det import PPOCRv5Det
+from .ppocr_rec import PPOCRv5Rec
 from .h2ovl_mississippi import H2OVLChat
 from .hawk_vl import HawkVL
 from .idefics import IDEFICS, IDEFICS2
@@ -78,7 +79,7 @@ from .qwen_vl import QwenVL, QwenVLChat
 from .rbdash import RBDash
 from .rbln import (RBLNBlip2, RBLNCosmosReason1, RBLNGemma3, RBLNGotOcr2, RBLNIdefics3,
                    RBLNLlava, RBLNLlavaNext, RBLNPaliGemma, RBLNPaliGemma2, RBLNPixtral,
-                   RBLNPPOCRv5Det, RBLNQwen2VL, RBLNQwen3VL)
+                   RBLNPPOCRv5Det, RBLNPPOCRv5Rec, RBLNQwen2VL, RBLNQwen3VL)
 from .ristretto import Ristretto
 from .ross import Ross
 from .sail_vl import SailVL

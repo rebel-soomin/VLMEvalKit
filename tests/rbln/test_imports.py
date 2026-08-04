@@ -12,6 +12,7 @@ have imported optimum.rbln via another test, so an in-process
 """
 
 from __future__ import annotations
+import os
 import subprocess
 import sys
 
@@ -23,11 +24,21 @@ _FORBIDDEN = ('optimum.rbln', 'torch_neuronx', 'rebel')
 
 
 def _run(code: str) -> subprocess.CompletedProcess:
+    # Importing ``vlmeval`` sets PYTHONSAFEPATH=1 in os.environ (a dependency
+    # does it at import time), and the child inherits it. Under that flag
+    # Python does NOT put the cwd on sys.path, so ``import vlmeval`` in the
+    # child fails with ModuleNotFoundError — but only when some other test in
+    # the session already imported vlmeval, which made this pass alone and
+    # fail in a full run. Drop the flag and pass the root explicitly.
+    env = {k: v for k, v in os.environ.items() if k != 'PYTHONSAFEPATH'}
+    env['PYTHONPATH'] = os.pathsep.join(
+        [REPO_ROOT] + ([env['PYTHONPATH']] if env.get('PYTHONPATH') else []))
     return subprocess.run(
         [sys.executable, '-c', code],
         capture_output=True,
         text=True,
         cwd=REPO_ROOT,
+        env=env,
     )
 
 
@@ -58,13 +69,13 @@ def test_import_does_not_load_runtime(import_line):
 
 
 def test_wrapper_classes_are_exported():
-    """All 13 concrete wrapper families + base resolve from the package."""
+    """All 14 concrete wrapper families + base resolve from the package."""
     code = (
         'import vlmeval.vlm.rbln as m\n'
         'names = ["RBLNVLMBase","RBLNQwen2VL","RBLNQwen3VL","RBLNLlava",\n'
         '         "RBLNLlavaNext","RBLNIdefics3","RBLNGemma3","RBLNPixtral",\n'
         '         "RBLNPaliGemma","RBLNPaliGemma2","RBLNBlip2","RBLNCosmosReason1",\n'
-        '         "RBLNGotOcr2","RBLNPPOCRv5Det"]\n'
+        '         "RBLNGotOcr2","RBLNPPOCRv5Det","RBLNPPOCRv5Rec"]\n'
         'missing = [n for n in names if not hasattr(m, n)]\n'
         'assert not missing, missing\n'
         'print("OK")\n'

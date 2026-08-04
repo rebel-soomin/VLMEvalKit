@@ -13,6 +13,7 @@ from .paligemma import RBLNPaliGemma
 from .paligemma2 import RBLNPaliGemma2
 from .pixtral import RBLNPixtral
 from .ppocrv5_det import RBLNPPOCRv5Det
+from .ppocrv5_rec import RBLNPPOCRv5Rec
 from .qwen2_vl import RBLNQwen2VL
 from .qwen3_vl import RBLNQwen3VL
 
@@ -31,6 +32,7 @@ __all__ = [
     'RBLNCosmosReason1',
     'RBLNGotOcr2',
     'RBLNPPOCRv5Det',
+    'RBLNPPOCRv5Rec',
     'auto_select_wrapper',
     'register_rbln_auto',
 ]

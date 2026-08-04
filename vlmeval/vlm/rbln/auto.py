@@ -222,7 +222,7 @@ def auto_select_wrapper(model_path: str) -> tuple[type, dict]:
     # avoid a circular import when this module is loaded from rbln/__init__.
     from . import (RBLNBlip2, RBLNCosmosReason1, RBLNGemma3, RBLNGotOcr2, RBLNIdefics3,
                    RBLNLlava, RBLNLlavaNext, RBLNPaliGemma, RBLNPaliGemma2, RBLNPixtral,
-                   RBLNPPOCRv5Det, RBLNQwen2VL, RBLNQwen3VL)
+                   RBLNPPOCRv5Det, RBLNPPOCRv5Rec, RBLNQwen2VL, RBLNQwen3VL)
 
     name_to_cls: dict[str, type] = {
         'RBLNQwen2VL': RBLNQwen2VL,
@@ -238,6 +238,7 @@ def auto_select_wrapper(model_path: str) -> tuple[type, dict]:
         'RBLNCosmosReason1': RBLNCosmosReason1,
         'RBLNGotOcr2': RBLNGotOcr2,
         'RBLNPPOCRv5Det': RBLNPPOCRv5Det,
+        'RBLNPPOCRv5Rec': RBLNPPOCRv5Rec,
     }
 
     if 'cosmos' in model_path.lower():
@@ -260,16 +261,20 @@ def auto_select_wrapper(model_path: str) -> tuple[type, dict]:
         }
         return RBLNPixtral, defaults
 
-    # PP-OCRv5 detection is a PaddlePaddle inference model — there is no HF
-    # config.json with an ``architectures`` field, so the _ARCH_TABLE scan
-    # below cannot see it (and _fetch_architectures would raise). Route it by
-    # path marker, and require ``det`` so the PP-OCRv5 *recognition* variants
-    # (``..._mobile_rec``) do not land here. Compile defaults are empty: this
-    # model is compiled with ``rebel`` directly, not optimum-rbln, so there is
-    # no rbln_config to seed — resolution buckets are artifact filenames.
+    # PP-OCRv5 is a PaddlePaddle inference model — there is no HF config.json
+    # with an ``architectures`` field, so the _ARCH_TABLE scan below cannot see
+    # it (and _fetch_architectures would raise). Route both stages by path
+    # marker. ``det`` and ``rec`` are mutually exclusive in every PP-OCRv5
+    # release name, and requiring the token keeps each stage off the other's
+    # path. Compile defaults are empty: these are compiled with ``rebel``
+    # directly, not optimum-rbln, so there is no rbln_config to seed —
+    # resolution/width buckets are artifact filenames.
     marker = _normalize_path_marker(model_path)
-    if 'ppocrv5' in marker and 'det' in marker:
-        return RBLNPPOCRv5Det, {}
+    if 'ppocrv5' in marker:
+        if 'det' in marker:
+            return RBLNPPOCRv5Det, {}
+        if 'rec' in marker:
+            return RBLNPPOCRv5Rec, {}
 
     archs = _fetch_architectures(model_path)
     for token, cls_name, compile_defaults in _ARCH_TABLE:

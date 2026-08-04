@@ -21,7 +21,8 @@ import pytest
 
 from vlmeval.vlm.rbln import (RBLNBlip2, RBLNCosmosReason1, RBLNGemma3, RBLNGotOcr2,
                               RBLNIdefics3, RBLNLlava, RBLNLlavaNext, RBLNPaliGemma,
-                              RBLNPaliGemma2, RBLNPixtral, RBLNPPOCRv5Det, RBLNQwen2VL,
+                              RBLNPaliGemma2, RBLNPixtral, RBLNPPOCRv5Det,
+                              RBLNPPOCRv5Rec, RBLNQwen2VL,
                               RBLNQwen3VL)
 from vlmeval.vlm.rbln.auto import auto_select_wrapper
 
@@ -160,11 +161,32 @@ def test_ppocrv5_det_routed_by_path_marker(tmp_path, name):
     assert defaults == {}
 
 
-def test_ppocrv5_rec_does_not_route_to_det(tmp_path):
-    """The recognition variants share the ppocrv5 marker but must NOT land on
-    the detector — a rec model cannot emit coordinates, and silently routing
-    it here would produce a meaningless run instead of a clear error."""
-    d = tmp_path / 'korean_PP-OCRv5_mobile_rec-rbln'
+@pytest.mark.parametrize('name', [
+    'korean_PP-OCRv5_mobile_rec-rbln',
+    'PP-OCRv5_mobile_rec',
+    'PP-OCRv5_server_rec-rbln',
+    'ppocrv5_mobile_rec',
+])
+def test_ppocrv5_rec_routed_by_path_marker(name):
+    """Recognition shares the ``ppocrv5`` marker with detection, so the stage
+    token is what separates them. Routing rec to the detector would be silent
+    nonsense — a detector emits coordinates, never text."""
+    cls, defaults = auto_select_wrapper(name)
+    assert cls is RBLNPPOCRv5Rec
+    # Compiled with rebel directly, not optimum-rbln: nothing to seed.
+    assert defaults == {}
+
+
+def test_ppocrv5_det_and_rec_do_not_cross_route():
+    """The two stages must never resolve to each other's wrapper."""
+    assert auto_select_wrapper('PP-OCRv5_server_det-rbln')[0] is RBLNPPOCRv5Det
+    assert auto_select_wrapper('korean_PP-OCRv5_mobile_rec-rbln')[0] is RBLNPPOCRv5Rec
+
+
+def test_ppocrv5_without_stage_token_raises(tmp_path):
+    """A ``ppocrv5`` path naming neither stage is ambiguous, and guessing would
+    pick a model that cannot do the task. It must fail instead."""
+    d = tmp_path / 'PP-OCRv5_something-rbln'
     d.mkdir()  # no config.json, as with the real artifact
     with pytest.raises(ValueError):
         auto_select_wrapper(str(d))

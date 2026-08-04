@@ -38,6 +38,7 @@ T2 는 `scripts/rbln_smoke.sh` 로 NPU 호스트에서 수행한다 (CI 필수 �
 | RBLNBlip2³       | single-image VQA/caption | blip2-opt-2.7b | OCRBench / ChartQA_TEST | 1 | `language_model.tensor_parallel_size` | T0,T2 |
 | RBLNGotOcr2⁴     | single-image OCR (`INTERLEAVE=False`) | GOT-OCR-2.0-hf | OCRBench_v2 / OCRBench_v2_MINI | 1 | `language_model.num_devices` | T0,T2 |
 | RBLNPPOCRv5Det⁵  | single-image 텍스트 검출 (`INTERLEAVE=False`) | PP-OCRv5_server_det | OCRBench_v2 (text detection) | n/a | n/a (해상도 버킷=아티팩트 파일명) | T0,T2 |
+| RBLNPPOCRv5Rec⁶  | single-image 텍스트 인식, det→rec 파이프라인 (`INTERLEAVE=False`) | korean_PP-OCRv5_mobile_rec | CCOCR_MultiLanOcr_Korean | n/a | n/a (폭 버킷=아티팩트 파일명) | T0,T2 |
 
 각주:
 - ¹ **알려진 quirk**: `Qwen3-VL-*-RBLN` 레지스트리 엔트리는 현재 `RBLNQwen2VL` 에
@@ -64,6 +65,21 @@ T2 는 `scripts/rbln_smoke.sh` 로 NPU 호스트에서 수행한다 (CI 필수 �
   VLM 이 아니라 프롬프트 패리티가 없고, 대신 **출력 포맷**을 실제 채점기로 잠근다
   (`test_ppocrv5_det_output.py`) — 포맷이 틀리면 조용히 0점이 된다.
   결과: [`PPOCRV5_DET_OCRBENCH_V2_RESULTS.md`](PPOCRV5_DET_OCRBENCH_V2_RESULTS.md)
+- ⁶ PP-OCRv5 인식도 optimum-rbln 모델이 아니며, 검출과 달리 **우회 2건**이 필요하다:
+  ① Conv 출력에 걸린 **분해형 LayerNorm** 이 거부되므로 opset 17(fused 유지) + **torch
+  프론트엔드**로 넣는다 (`compile_from_onnx` 는 opset 17 도 내부에서 재분해한다).
+  ② `Add` 직후 `GlobalAveragePool` 을 RBLN 이 `H×W` 가 아니라 `W` 로만 나눈다 —
+  **컴파일은 성공하고 결과만 틀린다**(전 timestep blank → 전부 빈 문자열). `make_static()`
+  이 `adaptive_avg_pool2d` 로 교체하고, 컴파일 **전에** CPU 등가(`max|Δ|=0`)를 확인한다.
+  라우팅은 경로 마커 `ppocrv5`+`rec` (det/rec 상호 오라우팅을 `test_auto_dispatch.py` 가 잠금).
+  ⚠️ 인식기는 **한 줄**만 읽으므로 페이지 입력에는 검출기가 줄을 공급해야 한다. 그래서
+  검출을 **박스 캐시로 동결**한다 (`scripts/ppocr_boxes_precompute.py`) — `box_thresh=0.6`
+  이 급격한 컷오프라 검출을 양쪽에서 라이브로 돌리면 crop 개수·위치가 달라져 인식 비교가
+  귀속 불가능해진다. 캐시 미스는 라이브 검출로 **폴백하지 않고 예외**를 던진다.
+  문자 사전은 아티팩트에 없다 — `charset_dir` 로 체크포인트를 넘겨야 하고, 클래스 수 불일치
+  시 예외를 던진다(사전이 틀리면 조용히 엉뚱한 문자로 디코딩된다).
+  계약: `test_ppocrv5_rec_output.py`.
+  결과: [`PPOCRV5_REC_CCOCR_KOREAN_RESULTS.md`](PPOCRV5_REC_CCOCR_KOREAN_RESULTS.md)
 
 ## 모달리티 커버리지 (스칼라 채점기)
 
