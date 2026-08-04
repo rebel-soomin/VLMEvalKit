@@ -458,11 +458,32 @@ You can launch the evaluation by setting either --data and --model or --config.
         ),
     )
     parser.add_argument(
+        '--gpus', type=int, default=None,
+        help=(
+            'Number of GPUs to use for data-parallel inference. Relaunches '
+            'this exact command under `torchrun --standalone '
+            '--nproc-per-node=N`: one inference rank per GPU, with the '
+            'dataset sharded round-robin across ranks and rank 0 merging '
+            'predictions and running the evaluation. Pass 0 or -1 to use '
+            'every visible GPU. No-op when the command is already running '
+            'under torchrun.'
+        ),
+    )
+    parser.add_argument(
         '--limit', type=int, default=None,
         help=(
             'If set, truncate each dataset to the first N samples by row order '
             'before inference. Useful for smoke-testing a model / config before '
             'running a full benchmark. Applies to every --data entry uniformly.'
+        ),
+    )
+    parser.add_argument(
+        '--categories', type=str, nargs='+', default=None,
+        help=(
+            'If set, keep only samples whose `category` column matches one of '
+            'the given values (exact match), e.g. --categories "text spotting en" '
+            '"text grounding en". Applied before --limit. Datasets without a '
+            'category column are skipped with an error.'
         ),
     )
     parser.add_argument(
@@ -732,6 +753,27 @@ def run_local_mode(args):
                                 skip_reason='invalid_dataset',
                             )
                         continue
+
+                if args.categories:
+                    if 'category' not in dataset.data.columns:
+                        raise ValueError(
+                            f'--categories was given but {dataset_name} has no '
+                            f'`category` column.'
+                        )
+                    original = len(dataset.data)
+                    dataset.data = dataset.data[
+                        dataset.data['category'].isin(args.categories)
+                    ].reset_index(drop=True)
+                    if len(dataset.data) == 0:
+                        raise ValueError(
+                            f'--categories {args.categories} matched no samples in '
+                            f'{dataset_name}.'
+                        )
+                    if RANK == 0:
+                        logger.info(
+                            f'--categories: filtered {dataset_name} from {original} '
+                            f'to {len(dataset.data)} samples ({args.categories})'
+                        )
 
                 if args.limit is not None and args.limit > 0:
                     original = len(dataset.data)
@@ -1239,8 +1281,39 @@ def run_api_mode(args):
         log_run_benchmark_report(pred_root)
 
 
+def maybe_relaunch_with_torchrun(args):
+    """``--gpus N``: replace this process with a ``torchrun`` launch of the
+    identical command for data-parallel inference (one rank per GPU; the
+    top-of-module CUDA_VISIBLE_DEVICES slicing then pins each rank to its
+    own GPU and vlmeval.inference shards the dataset round-robin).
+
+    No-op when already running under torchrun — the child processes keep
+    the ``--gpus`` flag in their argv and land here with WORLD_SIZE > 1.
+    """
+    if args.gpus is None or WORLD_SIZE > 1:
+        return
+    ngpu = args.gpus if args.gpus > 0 else len(GPU_LIST)
+    if ngpu <= 1:
+        return
+    if args.api_mode:
+        raise ValueError(
+            '--gpus shards local inference across GPUs; it does not apply to --api-mode.')
+    if len(GPU_LIST) < ngpu:
+        raise ValueError(f'--gpus {ngpu} requested but only {len(GPU_LIST)} GPUs are visible.')
+    cmd = [
+        sys.executable, '-m', 'torch.distributed.run',
+        '--standalone', f'--nproc-per-node={ngpu}',
+        sys.argv[0], *sys.argv[1:],
+    ]
+    logger.info('Relaunching under torchrun: %s', ' '.join(cmd))
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os.execv(sys.executable, cmd)
+
+
 def main():
     args = parse_args()
+    maybe_relaunch_with_torchrun(args)
     if args.api_mode:
         run_api_mode(args)
     else:

@@ -3972,11 +3972,13 @@ class OCRBench_v2(ImageBaseDataset):
             predict_result.append(result_entry)
         res_data_list = process_predictions(predict_result)
         en_scores, cn_scores = ocrbench_v2_aggregate_accuracy(res_data_list)
-        score_en_overall = sum(en_scores.values()) / len(en_scores)
-        score_cn_overall = sum(cn_scores.values()) / len(cn_scores)
         final_score_dict = {**en_scores, **cn_scores}
-        final_score_dict["English Overall Score"] = score_en_overall
-        final_score_dict["Chinese Overall Score"] = score_cn_overall
+        # Category-filtered runs (run.py --categories) can leave one side
+        # empty; the overall average over zero categories is undefined.
+        if en_scores:
+            final_score_dict["English Overall Score"] = sum(en_scores.values()) / len(en_scores)
+        if cn_scores:
+            final_score_dict["Chinese Overall Score"] = sum(cn_scores.values()) / len(cn_scores)
         score_pth = get_intermediate_file_path(eval_file, '_score', 'json')
         dump(final_score_dict, score_pth)
         return final_score_dict

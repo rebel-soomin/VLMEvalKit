@@ -220,3 +220,10 @@ result*
 debug
 outputs
 scripts/data
+
+# PP-OCRv5 det checkpoint + ONNX artifacts (scripts/ppocr_det_export.py)
+PP-OCRv5_server_det/
+PP-OCRv5_server_det-onnx/
+
+# OCRBench_v2 spotting-metric scratch dir
+.vlmeval/

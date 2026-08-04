@@ -2647,6 +2647,15 @@ model_groups = [
 model_groups.extend([bagel_series, spatial_related_models, sensenova_si_series])
 
 
+ppocr_series = {
+    # Static-shape ONNX (scripts/ppocr_det_export.py) on onnxruntime CUDA —
+    # the GPU twin of the RBLN port (vlmeval/vlm/rbln/ppocrv5_det.py); the
+    # wrapper subclasses it, so routing and output formats are identical.
+    'PP-OCRv5_server_det': partial(vlm.PPOCRv5Det, model_path='./PP-OCRv5_server_det-onnx'),
+}
+
+model_groups.append(ppocr_series)
+
 nanovlm_series = {
     "nanoVLM-460M-8k": partial(vlm.NanoVLM, model_path="lusxvr/nanoVLM-460M-8k"),
     "nanoVLM-230M-8k": partial(vlm.NanoVLM, model_path="lusxvr/nanoVLM-230M-8k"),
