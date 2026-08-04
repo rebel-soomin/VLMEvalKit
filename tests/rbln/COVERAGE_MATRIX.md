@@ -17,7 +17,7 @@
 T0/T0.5/T1 은 `/workspace/.eval` venv 의 `pytest tests/rbln/` 로 NPU 없이 통과한다.
 T2 는 `scripts/rbln_smoke.sh` 로 NPU 호스트에서 수행한다 (CI 필수 체크 아님, 아티팩트로 기록).
 
-## 패밀리 × 모달리티 (12개 concrete 패밀리)
+## 패밀리 × 모달리티 (13개 concrete 패밀리)
 
 `tensor_parallel_size` 는 **컴파일 시 결정**되는 값이며 고정 디바이스 카운트 게이트가
 아니다. 캐시 아티팩트가 있으면 그대로 로드하고, 없으면 아래 default tp(=`_ARCH_TABLE`)
@@ -37,6 +37,7 @@ T2 는 `scripts/rbln_smoke.sh` 로 NPU 호스트에서 수행한다 (CI 필수 �
 | RBLNPaliGemma2   | single-image (`INTERLEAVE=False`) | paligemma2-3b-mix-224 | AI2D_TEST | 4 | `language_model.tensor_parallel_size` | T0,T2 |
 | RBLNBlip2³       | single-image VQA/caption | blip2-opt-2.7b | OCRBench / ChartQA_TEST | 1 | `language_model.tensor_parallel_size` | T0,T2 |
 | RBLNGotOcr2⁴     | single-image OCR (`INTERLEAVE=False`) | GOT-OCR-2.0-hf | OCRBench_v2 / OCRBench_v2_MINI | 1 | `language_model.num_devices` | T0,T2 |
+| RBLNPPOCRv5Det⁵  | single-image 텍스트 검출 (`INTERLEAVE=False`) | PP-OCRv5_server_det | OCRBench_v2 (text detection) | n/a | n/a (해상도 버킷=아티팩트 파일명) | T0,T2 |
 
 각주:
 - ¹ **알려진 quirk**: `Qwen3-VL-*-RBLN` 레지스트리 엔트리는 현재 `RBLNQwen2VL` 에
@@ -55,6 +56,14 @@ T2 는 `scripts/rbln_smoke.sh` 로 NPU 호스트에서 수행한다 (CI 필수 �
   질문 템플릿으로 잠근다. 또한 GOT 는 답을 `<|im_end|>` 로 끝내지만 generation_config 에
   eos_token_id 가 없어, 래퍼가 이를 `eos_token_id` 에 넣지 않으면 매 예측 뒤에 쓰레기 토큰이
   max_new_tokens 까지 붙는다 (실측: 45토큰 1.2s → 2048토큰 12.6s).
+- ⁵ PP-OCRv5 검출은 **optimum-rbln 모델이 아니다** — paddle→ONNX→`rebel.compile_from_onnx`
+  경로라 `save_pretrained`·`rbln_config.json` 이 없다. 그래서 `RBLNPPOCRv5Det` 이
+  `_maybe_save_compiled_artifact` / `_check_compiled_max_seq_len` 을 no-op 으로 덮는다.
+  HF `config.json` 이 없어 `_ARCH_TABLE` 스캔이 불가하므로 **경로 마커**(`ppocrv5`+`det`)로
+  라우팅한다 (`rec` 변종이 검출기로 잘못 들어가면 좌표를 못 내므로 명시적으로 배제).
+  VLM 이 아니라 프롬프트 패리티가 없고, 대신 **출력 포맷**을 실제 채점기로 잠근다
+  (`test_ppocrv5_det_output.py`) — 포맷이 틀리면 조용히 0점이 된다.
+  결과: [`PPOCRV5_DET_OCRBENCH_V2_RESULTS.md`](PPOCRV5_DET_OCRBENCH_V2_RESULTS.md)
 
 ## 모달리티 커버리지 (스칼라 채점기)
 

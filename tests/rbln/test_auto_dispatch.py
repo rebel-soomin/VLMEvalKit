@@ -21,7 +21,8 @@ import pytest
 
 from vlmeval.vlm.rbln import (RBLNBlip2, RBLNCosmosReason1, RBLNGemma3, RBLNGotOcr2,
                               RBLNIdefics3, RBLNLlava, RBLNLlavaNext, RBLNPaliGemma,
-                              RBLNPaliGemma2, RBLNPixtral, RBLNQwen2VL, RBLNQwen3VL)
+                              RBLNPaliGemma2, RBLNPixtral, RBLNPPOCRv5Det, RBLNQwen2VL,
+                              RBLNQwen3VL)
 from vlmeval.vlm.rbln.auto import auto_select_wrapper
 
 
@@ -139,6 +140,34 @@ def test_gotocr2_forces_inputs_embeds_via_config_not_table(tmp_path):
     assert lm['max_seq_len'] == 4096
     # vision_tower must be present (empty) so its submodule config is built.
     assert defaults['rbln_config']['vision_tower'] == {}
+
+
+@pytest.mark.parametrize('name', [
+    'PP-OCRv5_server_det',
+    'PP-OCRv5_server_det-rbln',
+    'PaddlePaddle/PP-OCRv5_server_det',
+    'ppocrv5_mobile_det',
+])
+def test_ppocrv5_det_routed_by_path_marker(tmp_path, name):
+    """PP-OCRv5 detection is a PaddlePaddle model with no HF config.json, so
+    it must route on the path marker alone — before _fetch_architectures is
+    reached (which would raise). The marker is punctuation-insensitive so
+    'PP-OCRv5' matches 'ppocrv5'.
+    """
+    cls, defaults = auto_select_wrapper(name)
+    assert cls is RBLNPPOCRv5Det
+    # Compiled with rebel directly, not optimum-rbln: nothing to seed.
+    assert defaults == {}
+
+
+def test_ppocrv5_rec_does_not_route_to_det(tmp_path):
+    """The recognition variants share the ppocrv5 marker but must NOT land on
+    the detector — a rec model cannot emit coordinates, and silently routing
+    it here would produce a meaningless run instead of a clear error."""
+    d = tmp_path / 'korean_PP-OCRv5_mobile_rec-rbln'
+    d.mkdir()  # no config.json, as with the real artifact
+    with pytest.raises(ValueError):
+        auto_select_wrapper(str(d))
 
 
 def test_unknown_architecture_raises(tmp_path):

@@ -58,13 +58,13 @@ def test_import_does_not_load_runtime(import_line):
 
 
 def test_wrapper_classes_are_exported():
-    """All 12 concrete wrapper families + base resolve from the package."""
+    """All 13 concrete wrapper families + base resolve from the package."""
     code = (
         'import vlmeval.vlm.rbln as m\n'
         'names = ["RBLNVLMBase","RBLNQwen2VL","RBLNQwen3VL","RBLNLlava",\n'
         '         "RBLNLlavaNext","RBLNIdefics3","RBLNGemma3","RBLNPixtral",\n'
         '         "RBLNPaliGemma","RBLNPaliGemma2","RBLNBlip2","RBLNCosmosReason1",\n'
-        '         "RBLNGotOcr2"]\n'
+        '         "RBLNGotOcr2","RBLNPPOCRv5Det"]\n'
         'missing = [n for n in names if not hasattr(m, n)]\n'
         'assert not missing, missing\n'
         'print("OK")\n'

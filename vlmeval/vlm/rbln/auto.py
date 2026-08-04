@@ -17,6 +17,7 @@ present at compile time and otherwise raises ``ValueError``.
 from __future__ import annotations
 import json
 import os
+import re
 from functools import partial
 
 from huggingface_hub import hf_hub_download
@@ -173,6 +174,12 @@ _WRAPPER_KWARG_DEFAULTS: dict[str, dict] = {
 }
 
 
+def _normalize_path_marker(model_path: str) -> str:
+    """Lowercase and strip punctuation, so ``PP-OCRv5_server_det`` matches the
+    ``ppocrv5`` marker regardless of hyphen/underscore spelling."""
+    return re.sub(r'[^a-z0-9]', '', model_path.lower())
+
+
 def _read_architectures_field(config_json_path: str) -> str:
     with open(config_json_path, 'r', encoding='utf-8') as f:
         arch = json.load(f).get('architectures', '')
@@ -215,7 +222,7 @@ def auto_select_wrapper(model_path: str) -> tuple[type, dict]:
     # avoid a circular import when this module is loaded from rbln/__init__.
     from . import (RBLNBlip2, RBLNCosmosReason1, RBLNGemma3, RBLNGotOcr2, RBLNIdefics3,
                    RBLNLlava, RBLNLlavaNext, RBLNPaliGemma, RBLNPaliGemma2, RBLNPixtral,
-                   RBLNQwen2VL, RBLNQwen3VL)
+                   RBLNPPOCRv5Det, RBLNQwen2VL, RBLNQwen3VL)
 
     name_to_cls: dict[str, type] = {
         'RBLNQwen2VL': RBLNQwen2VL,
@@ -230,6 +237,7 @@ def auto_select_wrapper(model_path: str) -> tuple[type, dict]:
         'RBLNBlip2': RBLNBlip2,
         'RBLNCosmosReason1': RBLNCosmosReason1,
         'RBLNGotOcr2': RBLNGotOcr2,
+        'RBLNPPOCRv5Det': RBLNPPOCRv5Det,
     }
 
     if 'cosmos' in model_path.lower():
@@ -251,6 +259,17 @@ def auto_select_wrapper(model_path: str) -> tuple[type, dict]:
             'rbln_config': dict(_PIXTRAL_RBLN_CONFIG),
         }
         return RBLNPixtral, defaults
+
+    # PP-OCRv5 detection is a PaddlePaddle inference model — there is no HF
+    # config.json with an ``architectures`` field, so the _ARCH_TABLE scan
+    # below cannot see it (and _fetch_architectures would raise). Route it by
+    # path marker, and require ``det`` so the PP-OCRv5 *recognition* variants
+    # (``..._mobile_rec``) do not land here. Compile defaults are empty: this
+    # model is compiled with ``rebel`` directly, not optimum-rbln, so there is
+    # no rbln_config to seed — resolution buckets are artifact filenames.
+    marker = _normalize_path_marker(model_path)
+    if 'ppocrv5' in marker and 'det' in marker:
+        return RBLNPPOCRv5Det, {}
 
     archs = _fetch_architectures(model_path)
     for token, cls_name, compile_defaults in _ARCH_TABLE:

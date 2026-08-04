@@ -35,6 +35,7 @@ same file per shard.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import os
 import os.path as osp
@@ -63,6 +64,28 @@ def _shard_file(work_dir: str, rank: int, world_size: int, dataset_name: str) ->
     return osp.join(work_dir, f'{rank}{world_size}_{dataset_name}.pkl')
 
 
+def _apply_subset(dataset, args) -> None:
+    """Narrow ``dataset.data`` in place, identically in parent and workers.
+
+    Both must slice the same way or the merge finds missing predictions, so
+    this is one function called from both paths. ``--categories`` needs a
+    ``category`` column (OCRBench_v2 has one).
+    """
+    if args.categories:
+        wanted = [c.strip() for c in args.categories.split(',') if c.strip()]
+        if 'category' not in dataset.data:
+            raise SystemExit(
+                f'--categories given but {args.data} has no "category" column')
+        known = set(dataset.data['category'].unique())
+        unknown = [c for c in wanted if c not in known]
+        if unknown:
+            raise SystemExit(f'unknown categories {unknown}; available: {sorted(known)}')
+        dataset.data = dataset.data[
+            dataset.data['category'].isin(wanted)].reset_index(drop=True)
+    if args.limit:
+        dataset.data = dataset.data.head(args.limit).reset_index(drop=True)
+
+
 def run_worker(args) -> int:
     """One shard. ``infer_data`` slices the dataset by RANK/WORLD_SIZE."""
     from vlmeval.dataset import build_dataset
@@ -72,8 +95,7 @@ def run_worker(args) -> int:
     alias = _register_model(args.model, rbln_kwargs)
 
     dataset = build_dataset(args.data)
-    if args.limit:
-        dataset.data = dataset.data.head(args.limit).reset_index(drop=True)
+    _apply_subset(dataset, args)
 
     out_file = _shard_file(args.work_dir, args.rank, args.nproc, args.data)
     infer_data(alias, alias, args.work_dir, dataset, out_file,
@@ -83,16 +105,13 @@ def run_worker(args) -> int:
 
 
 def run_parent(args) -> int:
-    import pandas as pd
-
     from vlmeval.dataset import build_dataset
     from vlmeval.smp import dump, load
 
     os.makedirs(args.work_dir, exist_ok=True)
 
     dataset = build_dataset(args.data)
-    if args.limit:
-        dataset.data = dataset.data.head(args.limit).reset_index(drop=True)
+    _apply_subset(dataset, args)
     alias = osp.basename(args.model.rstrip('/')) or args.model
 
     devices = ([d.strip() for d in args.devices.split(',')] if args.devices
@@ -117,6 +136,8 @@ def run_parent(args) -> int:
                '--rank', str(rank)]
         if args.limit:
             cmd += ['--limit', str(args.limit)]
+        if args.categories:
+            cmd += ['--categories', args.categories]
         if args.rbln_kwargs:
             cmd += ['--rbln-kwargs', args.rbln_kwargs]
         log = open(osp.join(args.work_dir, f'rank{rank}.log'), 'w')
@@ -155,12 +176,66 @@ def run_parent(args) -> int:
     dump(data, result_file)
     print(f'[parent] merged {len(data)} predictions -> {result_file}', flush=True)
 
-    scores = dataset.evaluate(result_file)
-    if isinstance(scores, pd.DataFrame):
-        scores = scores.to_dict()
+    scores = _score(dataset, result_file, args)
+    score_file = osp.join(args.work_dir, f'{alias}_{args.data}_score.json')
+    with open(score_file, 'w', encoding='utf-8') as f:
+        json.dump(scores, f, indent=2, ensure_ascii=False)
     print('[parent] scores:\n' + json.dumps(scores, indent=2, ensure_ascii=False),
           flush=True)
+    print(f'[parent] wrote {score_file}', flush=True)
     return 0
+
+
+def _score(dataset, result_file: str, args) -> dict:
+    """Score with the dataset's own ``evaluate``, falling back to per-category
+    means for a filtered subset.
+
+    ``OCRBench_v2.evaluate`` averages over fixed English *and* Chinese skill
+    buckets, so filtering to a subset that empties one of them raises
+    ``ZeroDivisionError``. That is not a scoring failure — the per-item
+    scores are still valid — so fall back to per-category means computed
+    with the dataset's own ``process_predictions``.
+    """
+    import pandas as pd
+
+    try:
+        scores = dataset.evaluate(result_file)
+        return scores.to_dict() if isinstance(scores, pd.DataFrame) else scores
+    except ZeroDivisionError:
+        if not args.categories:
+            raise
+        print('[parent] dataset aggregate needs the full set (a skill bucket is '
+              'empty under --categories); falling back to per-category means',
+              flush=True)
+
+    from vlmeval.dataset.utils.ocrbrnch_v2_eval import process_predictions
+
+    data = pd.read_excel(result_file)
+    items = []
+    for _, line in data.iterrows():
+        pred = str(line['prediction']) if pd.notna(line['prediction']) else ''
+        item = {
+            'type': line['category'],
+            'question': line['question'],
+            'predict': pred,
+            'answers': ast.literal_eval(line['answer']),
+            'bbox': (ast.literal_eval(line['bbox'])
+                     if line['bbox'] != 'without bbox' else line['bbox']),
+            'content': (ast.literal_eval(line['content'])
+                        if line['content'] != 'without content' else line['content']),
+        }
+        if line['eval'] != 'without eval':
+            item['eval'] = line['eval']
+        items.append(item)
+
+    scored = process_predictions(items)
+    df = pd.DataFrame([{'category': r['type'], 'score': r.get('score', 0.0)}
+                       for r in scored])
+    grouped = df.groupby('category')['score'].agg(['mean', 'count'])
+    out = {c: {'score': round(r['mean'] * 100, 4), 'n': int(r['count'])}
+           for c, r in grouped.iterrows()}
+    out['_overall'] = {'score': round(df['score'].mean() * 100, 4), 'n': len(df)}
+    return out
 
 
 def main() -> int:
@@ -174,6 +249,13 @@ def main() -> int:
                     help='comma-separated RBLN_DEVICES values, one per rank '
                          '(default 0..nproc-1)')
     ap.add_argument('--limit', type=int, default=None, help='head-N of the dataset')
+    ap.add_argument('--categories', default=None,
+                    help='comma-separated values of the dataset\'s "category" '
+                         'column to keep (e.g. OCRBench_v2\'s '
+                         '"text grounding en,VQA with position en"). Scoring '
+                         'falls back to per-category means, because the '
+                         'dataset aggregate divides by an empty bucket when a '
+                         'language/skill group is filtered out.')
     ap.add_argument('--rbln-kwargs', default=None,
                     help='JSON passed to the wrapper, as in run.py')
     ap.add_argument('--rank', type=int, default=None,
